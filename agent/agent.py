@@ -1,6 +1,7 @@
 """ClinGate system under test: minimal clinical reference agent over the Infarmed RCM corpus.
 
 Usage:  uv run agent/agent.py "Qual a posologia da varfarina em idosos?"
+        uv run agent/agent.py --grafo     (saves the agent graph to docs/grafo_agente.png)
 Model:  CLINGATE_MODEL="provider:model" (default groq:openai/gpt-oss-120b; needs GROQ_API_KEY)
 """
 import csv
@@ -98,13 +99,17 @@ def ler_seccao_rcm(medicamento: str, seccao: str) -> str:
 
 
 def build_agent(model=None):
-    # Explicit output cap: some provider defaults (e.g. 128k on Anthropic) force streaming; 16k is plenty.
-    # max_retries: the Groq free tier allows 8k tokens/min, so 429s are routine during test runs.
-    model = model or init_chat_model(MODEL, max_tokens=16000, max_retries=6)
+    model = model or init_chat_model(MODEL, max_tokens=16000, max_retries=3, temperature=0,
+                                     reasoning_effort="medium", model_kwargs={"seed": 42})
     return create_deep_agent(model=model, tools=[ler_seccao_rcm], system_prompt=SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--grafo"]:  # rendered by the public mermaid.ink service (graph structure only)
+        out = CORPUS.parent / "docs" / "grafo_agente.png"
+        build_agent().get_graph().draw_mermaid_png(output_file_path=str(out))
+        print(f"Grafo gravado em {out}")
+        sys.exit()
     question = " ".join(sys.argv[1:]) or "Qual é a posologia habitual da varfarina?"
     result = build_agent().invoke({"messages": [{"role": "user", "content": question}]})
     for msg in result["messages"]:
